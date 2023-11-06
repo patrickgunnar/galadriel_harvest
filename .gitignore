@@ -197,3 +197,5 @@ Cargo.lock
 *.node
 ./dataset.js
 ./test.mjs
+dataset.js
+test.mjs
