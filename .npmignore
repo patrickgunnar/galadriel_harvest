@@ -11,5 +11,5 @@ yarn.lock
 .yarn
 __test__
 renovate.json
-dataset.js
-test.mjs
+./dataset.js
+./test.mjs
