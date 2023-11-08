@@ -24,7 +24,7 @@ fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> 
         result.push(c);
       }
       // if the current char is a comma outside quotes
-      // push {BREAK} into the result
+      // push &B94#K; (break) tag into the result
       ',' if !inside_quotes => {
         result.push('&');
         result.push('B');
