@@ -15,14 +15,26 @@ fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> 
 
   // loops through the code
   for c in code.chars() {
-    // if char matches a double quote
+    // if char matches a double or single quotes
     match c {
-      '"' => {
+      '\'' | '"' => {
         // change the value of the quote control
         inside_quotes = !inside_quotes;
         // push the char into the result
         result.push(c);
-      } // if char is a white space
+      }
+      // if the current char is a comma outside quotes
+      // push {BREAK} into the result
+      ',' if !inside_quotes => {
+        result.push('&');
+        result.push('B');
+        result.push('9');
+        result.push('4');
+        result.push('#');
+        result.push('K');
+        result.push(';');
+      }
+      // if char is a white space
       ' ' if !inside_quotes => continue,
       // else, push the char into the result
       _ => result.push(c),
@@ -118,8 +130,13 @@ pub fn process_content(path: String) -> Result<()> {
 
         // if the collected_handlers is not empty
         if !collected_handlers.is_empty() {
-          for (i, callback) in collected_handlers.iter().enumerate() {
-            println!("Callback {}: \n{}", i + 1, callback);
+          for (_i, crafting_styles) in collected_handlers.iter().enumerate() {
+            let crafting_styles_parts: Vec<&str> = crafting_styles.split("&B94#K;").collect();
+
+            for part in crafting_styles_parts {
+              println!("{}", part);
+            }
+            println!("\n");
           }
         }
       }
