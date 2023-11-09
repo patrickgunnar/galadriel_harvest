@@ -1,6 +1,7 @@
 #![deny(clippy::all)]
 
 use napi::Result;
+use serde_json::Value;
 use std::io::Read;
 use std::{fs::File, path::Path};
 
@@ -106,6 +107,108 @@ fn collects_crafting_styles_from_code(code: String) -> Vec<String> {
   collected_crafting_styles
 }
 
+fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<Value> {
+  // split the string into the the &B94#K; tags
+  let crafting_styles_parts: Vec<&str> = crafting_styles.split("&B94#K;").collect();
+  // accumulator to store the collected properties
+  let mut accumulator: Vec<Value> = Vec::new();
+  // temporary store the nested properties
+  let mut nested_content: Vec<String> = Vec::new();
+  // nested control
+  let mut is_nested = false;
+
+  // if the crafting_styles_parts is not empty
+  if !crafting_styles_parts.is_empty() {
+    // loops through the parts
+    for part in crafting_styles_parts {
+      // if part includes an opened curly bracket
+      if part.contains("{") {
+        // loop through splitted str
+        for item in part.split("{") {
+          // if item includes a colon
+          if item.contains(":") {
+            // if item last sign is a colon
+            if item.ends_with(":") {
+              is_nested = true;
+              nested_content.push(item.to_string().clone());
+
+              // if item contains an closed curly bracket
+            } else if item.contains("}") {
+              // loop through the splitted item
+              for el in item.split("}") {
+                // if el includes a colon
+                if el.contains(":") {
+                  // if is a nested object operation
+                  if is_nested {
+                    // if el ends with an 2 closed curly bracket
+                    if el.ends_with("}}") {
+                      nested_content.push(el.to_string().clone());
+                      accumulator.push(Value::Array(
+                        nested_content
+                          .clone()
+                          .into_iter()
+                          .map(Value::String)
+                          .collect(),
+                      ));
+                      nested_content.clear();
+                      is_nested = false;
+                    } else {
+                      nested_content.push(el.to_string().clone());
+                    }
+                  } else {
+                    accumulator.push(Value::String(el.to_string().clone()));
+                  }
+                }
+              }
+              // if item does not include an equals sign
+            } else if !item.contains("=") {
+              // if is a nested object operation
+              if is_nested {
+                nested_content.push(item.to_string().clone());
+              } else {
+                accumulator.push(Value::String(item.to_string().clone()));
+              }
+            }
+          }
+        }
+        // if part includes a closed  curly bracket
+      } else if part.contains("}") {
+        // loop through the splitted part
+        for item in part.split("}") {
+          // if item includes a colon
+          if item.contains(":") {
+            // if is a nested object operation
+            if is_nested {
+              nested_content.push(item.to_string().clone());
+            } else {
+              accumulator.push(Value::String(item.to_string().clone()))
+            }
+          }
+        }
+
+        // if is a nested object operation
+        if is_nested {
+          accumulator.push(Value::Array(
+            nested_content.clone().into_iter().map(Value::String).collect(),
+          ));
+          nested_content.clear();
+          is_nested = false;
+        }
+        // if part includes colon and not include an equals sign
+      } else if part.contains(":") && !part.contains("=") {
+        // if is a nested object operation
+        if is_nested {
+          nested_content.push(part.to_string().clone());
+        } else {
+          accumulator.push(Value::String(part.to_string().clone()));
+        }
+      }
+    }
+  }
+
+  accumulator
+}
+
 #[napi]
 pub fn process_content(path: String) -> Result<()> {
   // checks if the file exists
@@ -131,12 +234,15 @@ pub fn process_content(path: String) -> Result<()> {
         // if the collected_handlers is not empty
         if !collected_handlers.is_empty() {
           for (_i, crafting_styles) in collected_handlers.iter().enumerate() {
-            let crafting_styles_parts: Vec<&str> = crafting_styles.split("&B94#K;").collect();
+            // collects the objects properties from the crafting styles callback
+            let objects_array = collects_objects_from_crafting_styles(crafting_styles.to_string());
 
-            for part in crafting_styles_parts {
-              println!("{}", part);
+            // the objects array is not empty
+            if !objects_array.is_empty() {
+              for object in objects_array {
+                println!("{}", object.to_string());
+              }
             }
-            println!("\n");
           }
         }
       }
