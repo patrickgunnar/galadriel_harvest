@@ -258,8 +258,44 @@ fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<Value>) -> S
 
 #[napi]
 pub fn process_content(path: String) -> Result<()> {
-  // checks if the file exists
-  if Path::new(&path).exists() {
+  // collects the contents of the galadriel config file
+  let galadriel_config_data = collects_galadriel_config();
+  // control to check if exists a valid config
+  let mut config_control = false;
+
+  // if the file exists
+  if let Some(config) = galadriel_config_data.clone() {
+    // get the modular config
+    if let Some(module_value) = config.get("module") {
+      // if the value is a boolean
+      if module_value.is_boolean() {
+        // if the value is true
+        if module_value.as_bool().unwrap_or(false) {
+          config_control = true;
+        }
+      }
+    }
+
+    if !config_control {
+      // if the config control stills false
+      // get the output config
+      if let Some(module_value) = config.get("output") {
+        // if the value is a strung
+        if module_value.is_string() {
+          // collects the output value
+          let output = module_value.as_str().unwrap_or_default();
+
+          // if the output is not empty
+          if !output.is_empty() {
+            config_control = true;
+          }
+        }
+      }
+    }
+  }
+
+  // checks if the file exists and the config is valid
+  if Path::new(&path).exists() && config_control {
     // attempt to open the file
     let mut file = File::open(&path)?;
     // Create a mutable string to store the file content
@@ -267,43 +303,9 @@ pub fn process_content(path: String) -> Result<()> {
 
     // Read the file content into the string
     file.read_to_string(&mut file_content)?;
-    // collects the contents of the galadriel config file
-    let galadriel_config_data = collects_galadriel_config();
-    // control to check if exists a valid config
-    let mut config_control = false;
 
-    // if the file exists
-    if let Some(config) = galadriel_config_data.clone() {
-      // get the modular config
-      if let Some(module_value) = config.get("module") {
-        // if the value is a boolean
-        if module_value.is_boolean() {
-          // if the value is true
-          if module_value.as_bool().unwrap_or(false) {
-            config_control = true;
-          }
-        }
-      }
-
-      if !config_control { // if the config control stills false
-        // get the output config
-        if let Some(module_value) = config.get("output") {
-          // if the value is a strung
-          if module_value.is_string() {
-            // collects the output value
-            let output = module_value.as_str().unwrap_or_default();
-
-            // if the output is not empty
-            if !output.is_empty() {
-              config_control = true;
-            }
-          }
-        }
-      }
-    }
-
-    // if the file content is not empty and the config is valid
-    if !file_content.is_empty() && config_control {
+    // if the file content is not empty
+    if !file_content.is_empty() {
       // removes all the white spaces outside quotes and break lines
       let clean_code = clear_white_spaces_and_break_lines_from_code(file_content)?;
 
