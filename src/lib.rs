@@ -3,7 +3,10 @@
 use napi::Result;
 use serde_json::Value;
 use std::io::Read;
-use std::{fs::File, path::Path};
+use std::{
+  fs::{self, File},
+  path::Path,
+};
 
 #[macro_use]
 extern crate napi_derive;
@@ -189,7 +192,11 @@ fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<Value> 
         // if is a nested object operation
         if is_nested {
           accumulator.push(Value::Array(
-            nested_content.clone().into_iter().map(Value::String).collect(),
+            nested_content
+              .clone()
+              .into_iter()
+              .map(Value::String)
+              .collect(),
           ));
           nested_content.clear();
           is_nested = false;
@@ -209,6 +216,46 @@ fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<Value> 
   accumulator
 }
 
+fn collects_galadriel_config() -> Option<Value> {
+  // read the dir folder
+  if let Ok(entries) = fs::read_dir(".") {
+    // loops through all entries in the directory
+    for entry in entries {
+      if let Ok(entry) = entry {
+        // get the name of the entry
+        let file_name = entry.file_name();
+
+        // file name, convert it to a string
+        if let Some(file_str) = file_name.to_str() {
+          // if file name is equal to "galadriel.json"
+          if file_str == "galadriel.json" {
+            // get the file path
+            let file_path = entry.path();
+
+            // read the content of the file
+            if let Ok(content) = fs::read_to_string(&file_path) {
+              // return a json containing the data
+              if let Ok(json) = serde_json::from_str::<Value>(&content) {
+                return Some(json);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  None
+}
+
+fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<Value>) -> String {
+  for object in objects_array {
+    println!("{}", object.to_string());
+  }
+
+  String::new()
+}
+
 #[napi]
 pub fn process_content(path: String) -> Result<()> {
   // checks if the file exists
@@ -220,9 +267,43 @@ pub fn process_content(path: String) -> Result<()> {
 
     // Read the file content into the string
     file.read_to_string(&mut file_content)?;
+    // collects the contents of the galadriel config file
+    let galadriel_config_data = collects_galadriel_config();
+    // control to check if exists a valid config
+    let mut config_control = false;
 
-    // if the file content is not empty
-    if !file_content.is_empty() {
+    // if the file exists
+    if let Some(config) = galadriel_config_data.clone() {
+      // get the modular config
+      if let Some(module_value) = config.get("module") {
+        // if the value is a boolean
+        if module_value.is_boolean() {
+          // if the value is true
+          if module_value.as_bool().unwrap_or(false) {
+            config_control = true;
+          }
+        }
+      }
+
+      if !config_control { // if the config control stills false
+        // get the output config
+        if let Some(module_value) = config.get("output") {
+          // if the value is a strung
+          if module_value.is_string() {
+            // collects the output value
+            let output = module_value.as_str().unwrap_or_default();
+
+            // if the output is not empty
+            if !output.is_empty() {
+              config_control = true;
+            }
+          }
+        }
+      }
+    }
+
+    // if the file content is not empty and the config is valid
+    if !file_content.is_empty() && config_control {
       // removes all the white spaces outside quotes and break lines
       let clean_code = clear_white_spaces_and_break_lines_from_code(file_content)?;
 
@@ -239,9 +320,11 @@ pub fn process_content(path: String) -> Result<()> {
 
             // the objects array is not empty
             if !objects_array.is_empty() {
-              for object in objects_array {
-                println!("{}", object.to_string());
-              }
+              // generates the CSS rules from the objects array
+              let generated_classes = generates_css_rules_from_crafting_styles_data(objects_array);
+
+              // if the generated classes is not empty
+              if !generated_classes.is_empty() {}
             }
           }
         }
