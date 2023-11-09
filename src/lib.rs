@@ -7,6 +7,7 @@ use std::{
   fs::{self, File},
   path::Path,
 };
+use sha2::{Digest, Sha256};
 
 #[macro_use]
 extern crate napi_derive;
@@ -25,7 +26,7 @@ fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> 
         // change the value of the quote control
         inside_quotes = !inside_quotes;
         // push the char into the result
-        result.push(c);
+        result.push('"');
       }
       // if the current char is a comma outside quotes
       // push &B94#K; (break) tag into the result
@@ -248,9 +249,57 @@ fn collects_galadriel_config() -> Option<Value> {
   None
 }
 
-fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<Value>) -> String {
+fn generates_hashing_hex(str: String, is_96_bits: bool, is_32_bits: bool) -> String {
+  // instantiate the hasher
+  let mut hasher = Sha256::new();
+  // updates the hasher with the string
+  hasher.update(str);
+  // finalize the digest
+  let digest_hash = hasher.finalize();
+  // collects the hashed string
+  let hex_string: String = digest_hash.iter().rev().map(|byte| format!("{:02x}", byte)).collect();
+
+  if is_96_bits { // if it's to return 12 chars
+    // returns the last 12 chars
+    return hex_string.chars().rev().take(12).collect();
+  } else if is_32_bits { // if it's to return 4 chars
+    // returns the last 4 chars
+    return  hex_string.chars().rev().take(4).collect();
+  } else { // if it's to return 8 chars
+    // returns the last 8 chars
+    return  hex_string.chars().rev().take(8).collect();
+  }
+}
+
+fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<Value>, is_modular: bool, file_path: String) -> String {
+  // loops over all objects
   for object in objects_array {
-    println!("{}", object.to_string());
+    if let Value::String(value) = object {
+      // if the current property is key:value type
+      if !value.contains("{") {
+        // extracts the key and value
+        let parts: Vec<String> = value.split(":").map(|s| s.to_string()).collect();
+
+        // if the current property have key and data
+        if let [key, data] = parts.as_slice() {
+          if data.contains("$") {
+            // generates the class name
+            // collects the value from data and replaces the "$" inside it by an empty string
+            let class_name = format!(
+              "{}{}", serde_json::from_str::<String>(data).unwrap_or_default().replace("$", ""),
+              if is_modular && !file_path.is_empty() { // if is a modular config and file_path is not empty
+                format!("-{}", generates_hashing_hex(file_path.clone(), false, true)) // hash the file path and return the hashed string
+              } else {
+                "".to_string() // return an empty string
+              }
+            );
+
+            // if the current selector was already used
+            println!("{}", class_name);
+          }
+        }
+      }
+    } else {}
   }
 
   String::new()
@@ -262,6 +311,8 @@ pub fn process_content(path: String) -> Result<()> {
   let galadriel_config_data = collects_galadriel_config();
   // control to check if exists a valid config
   let mut config_control = false;
+  // modular state
+  let mut is_modular = false;
 
   // if the file exists
   if let Some(config) = galadriel_config_data.clone() {
@@ -272,6 +323,7 @@ pub fn process_content(path: String) -> Result<()> {
         // if the value is true
         if module_value.as_bool().unwrap_or(false) {
           config_control = true;
+          is_modular = true;
         }
       }
     }
@@ -323,7 +375,7 @@ pub fn process_content(path: String) -> Result<()> {
             // the objects array is not empty
             if !objects_array.is_empty() {
               // generates the CSS rules from the objects array
-              let generated_classes = generates_css_rules_from_crafting_styles_data(objects_array);
+              let generated_classes = generates_css_rules_from_crafting_styles_data(objects_array, is_modular, path.clone());
 
               // if the generated classes is not empty
               if !generated_classes.is_empty() {}

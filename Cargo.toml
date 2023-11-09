@@ -12,6 +12,7 @@ napi = { version = "2.12.2", default-features = false, features = ["napi4"] }
 napi-derive = "2.12.2"
 serde = "1.0.192"
 serde_json = "1.0.108"
+sha2 = "0.10.8"
 regex = "1.10.2"
 
 [build-dependencies]
