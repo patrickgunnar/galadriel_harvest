@@ -89,7 +89,7 @@ fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> 
         // change the value of the quote control
         inside_quotes = !inside_quotes;
         // push the char into the result
-        result.push('"');
+        result.push(c);
       }
       // if the current char is a comma outside quotes
       // push &B94#K; (break) tag into the result
@@ -174,11 +174,11 @@ fn collects_crafting_styles_from_code(code: String) -> Vec<String> {
   collected_crafting_styles
 }
 
-fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<Value> {
+fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<String> {
   // split the string into the the &B94#K; tags
   let crafting_styles_parts: Vec<&str> = crafting_styles.split("&B94#K;").collect();
   // accumulator to store the collected properties
-  let mut accumulator: Vec<Value> = Vec::new();
+  let mut accumulator: Vec<String> = Vec::new();
   // temporary store the nested properties
   let mut nested_content: Vec<String> = Vec::new();
   // nested control
@@ -210,20 +210,16 @@ fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<Value> 
                     // if el ends with an 2 closed curly bracket
                     if el.ends_with("}}") {
                       nested_content.push(el.to_string().clone());
-                      accumulator.push(Value::Array(
-                        nested_content
-                          .clone()
-                          .into_iter()
-                          .map(Value::String)
-                          .collect(),
-                      ));
+                      accumulator.push(
+                        serde_json::to_string(&nested_content).unwrap()
+                      );
                       nested_content.clear();
                       is_nested = false;
                     } else {
                       nested_content.push(el.to_string().clone());
                     }
                   } else {
-                    accumulator.push(Value::String(el.to_string().clone()));
+                    accumulator.push(el.to_string().clone());
                   }
                 }
               }
@@ -233,7 +229,7 @@ fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<Value> 
               if is_nested {
                 nested_content.push(item.to_string().clone());
               } else {
-                accumulator.push(Value::String(item.to_string().clone()));
+                accumulator.push(item.to_string().clone());
               }
             }
           }
@@ -248,20 +244,16 @@ fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<Value> 
             if is_nested {
               nested_content.push(item.to_string().clone());
             } else {
-              accumulator.push(Value::String(item.to_string().clone()))
+              accumulator.push(item.to_string().clone())
             }
           }
         }
 
         // if is a nested object operation
         if is_nested {
-          accumulator.push(Value::Array(
-            nested_content
-              .clone()
-              .into_iter()
-              .map(Value::String)
-              .collect(),
-          ));
+          accumulator.push(
+            serde_json::to_string(&nested_content).unwrap()
+          );
           nested_content.clear();
           is_nested = false;
         }
@@ -271,7 +263,7 @@ fn collects_objects_from_crafting_styles(crafting_styles: String) -> Vec<Value> 
         if is_nested {
           nested_content.push(part.to_string().clone());
         } else {
-          accumulator.push(Value::String(part.to_string().clone()));
+          accumulator.push(part.to_string().clone());
         }
       }
     }
@@ -347,9 +339,11 @@ fn append_style_to_styles_ast(key: String, class_rules: String, media: String) -
       // if media is not empty and media is equal to property
       // or media is empty and key is equal to property
       if !media.is_empty() && property == &media || media.is_empty() && property == &key {
-        data.push(class_rules.clone());
-        found = true;
-        break;
+        if !data.contains(&class_rules) {
+          data.push(class_rules.clone());
+          found = true;
+          break;
+        }
       }
     }
   }
@@ -370,58 +364,136 @@ fn append_style_to_styles_ast(key: String, class_rules: String, media: String) -
   }
 }
 
-fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<Value>, is_modular: bool, file_path: String) -> String {
-  // loops over all objects
-  for object in objects_array {
-    if let Value::String(value) = object {
-      // if the current property is key:value type
-      if !value.contains("{") {
-        // extracts the key and value
-        let parts: Vec<String> = value.split(":").map(|s| s.to_string()).collect();
+fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo: String) -> () {
+  // extracts the key and value
+  let parts: Vec<String> = value.split(":").map(|s| s.to_string()).collect();
+  // if the pseudo is not empty
+  let pseudo_property = if !pseudo.is_empty() {
+    // collects the pseudo property from dynamic value
+    if let Some(pseudo_key) = collects_dynamic_core_data(pseudo.to_string()) {
+      pseudo_key.to_string()
+    } else { "".to_string() }
+  } else { "".to_string() };
 
-        // if the current property have key and data
-        if let [key, data] = parts.as_slice() {
-          if data.contains("$") {
-            // generates the class name
-            // collects the value from data and replaces the "$" inside it by an empty string
-            let string_data = serde_json::from_str::<String>(data).unwrap_or_default().replace(" ", "");
-            let class_name = format!(
-              "{}{}", string_data.clone().replace("$", ""),
-              if is_modular && !file_path.is_empty() { // if is a modular config and file_path is not empty
-                format!("-{}", generates_hashing_hex(file_path.clone(), false, true)) // hash the file path and return the hashed string
-              } else {
-                "".to_string() // return an empty string
-              }
-            );
+  // if the current property have key and data
+  if let [key, data] = parts.as_slice() {
+    // transform the json into a string
+    let transformed_json = serde_json::from_str::<String>(data).unwrap_or_default();
+    // returns the transformed json
+    let string_data = if !transformed_json.is_empty() {
+      transformed_json
+    } else { // replace the single quotes to double quotes and transform the json into a string
+      serde_json::from_str::<String>(&data.replace("'", "\"")).unwrap_or_default()
+    };
+    // if is a modular config and file_path is not empty
+    // hash the file path and return the hashed string
+    let modular_name = if is_modular && !file_path.is_empty() {
+      format!("-{}", generates_hashing_hex(file_path.clone(), false, true))
+    } else { // return an empty string
+      "".to_string() 
+    };
 
-            // lock the mutex to access the hash map
-            let generated_styles_map =  GENERATED_CSS_STYLES.lock().unwrap();
+    // generates the class name
+    let class_name = if string_data.contains("$") {
+      // replaces the "$" inside it by an empty string and removes spaces
+      format!("{}{}", string_data.clone().replace("$", "").replace(" ", ""), modular_name)
+    } else {  // transform the key and the its value into key:value format
+      format!("galadriel_{}{}", 
+        generates_hashing_hex(format!("{}:{}", key.clone().to_string(), string_data.clone()), false, false),
+        modular_name
+      )
+    };
 
-            // if the current selector was already used
-            if generated_styles_map.contains_key(&class_name.clone()) {
-              // if modular config is on
-              if is_modular {
-                // collects the styles
-                match generated_styles_map.get(&class_name.clone()) {
-                  Some(styles) => { // append the styles into the ast
-                    append_style_to_styles_ast(key.to_string(), styles.to_string(), "".to_string());
-                  },
-                  None => {}
-                }
-              }
+    // lock the mutex to access the hash map
+    let mut generated_styles_map =  GENERATED_CSS_STYLES.lock().unwrap();
 
-              continue;
-            }
-
-            // temp code
-            //println!("{}", class_name);
-          }
+    // if the current selector was already used
+    if generated_styles_map.contains_key(&class_name.clone()) {
+      // if modular config is on
+      if is_modular {
+        // collects the styles
+        match generated_styles_map.get(&class_name.clone()) {
+          Some(styles) => { // append the styles into the ast
+            append_style_to_styles_ast(key.to_string(), styles.to_string(), "".to_string());
+          },
+          None => {}
         }
       }
-    } else {}
-  }
 
-  String::new()
+      return;
+    }
+
+    if string_data.starts_with("$") { // if the current data starts with "$"
+      // if the collects static handler returns true
+      if let Some(collected_rules) = collects_static_core_data(key.to_string(), string_data.clone()) {
+        // extracts property:value pairs from the returned data
+        for (collected_property, collected_value) in collected_rules.iter() {
+          let class_rules = format!( // creates the CSS utility class
+            ".{}{} {{ {}: {} }}", class_name, 
+            if !pseudo_property.starts_with("#") { pseudo_property.clone() } else { "".to_string() }, 
+            collected_property, collected_value
+          );
+
+          // checks if the pseudo is a media
+          let media = if pseudo_property.starts_with("#") {
+            pseudo_property.replace("#", "")
+          } else { "".to_string() };
+
+          // insert the utility class into the tracker
+          generated_styles_map.insert(class_name.to_string(), class_rules.to_string());
+          // insert the utility class into the ast
+          append_style_to_styles_ast(key.to_string(), class_rules.to_string(), media);
+        }
+      } else {
+        println!("Config: {}", string_data.clone());
+      }
+    } else {
+      if let Some(collected_property) = collects_dynamic_core_data(key.to_string()) {
+        let class_rules = format!( // creates the CSS utility class
+          ".{}{} {{ {}: {} }}", class_name, 
+          if !pseudo_property.starts_with("#") { pseudo_property.clone() } else { "".to_string() }, 
+          collected_property, string_data.to_string()
+        );
+
+        // checks if the pseudo is a media
+        let media = if pseudo_property.starts_with("#") {
+          pseudo_property.replace("#", "")
+        } else { "".to_string() };
+
+        // insert the utility class into the tracker
+        generated_styles_map.insert(class_name.to_string(), class_rules.to_string());
+        // insert the utility class into the ast
+        append_style_to_styles_ast(key.to_string(), class_rules.to_string(), media);
+      }
+    }
+  }
+}
+
+fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<String>, is_modular: bool, file_path: String) -> () {
+  // loops over all objects
+  for value in objects_array {
+    // if the current property is key:value type
+    if !value.contains("[") && !value.contains("]") {
+      // process the value
+      process_css_rules(value, is_modular, file_path.to_string(), "".to_string());
+    } else if value.contains("[") && value.contains("]") {
+      // parse the json into a vector of strings
+      let parsed_vec = serde_json::from_str::<Vec<String>>(&value.to_string()).unwrap_or_default();
+      // holds the pseudo property
+      let mut pseudo_property = String::new();
+
+      // loops through the parsed content
+      for (i, value) in parsed_vec.iter().enumerate() {
+        if i == 0 { // if index is 0, get the pseudo property
+          pseudo_property = value.to_string().replace(":", "");
+          continue;
+        }
+
+        // process the value
+        process_css_rules(value.to_string(), is_modular, file_path.to_string(), pseudo_property.clone());
+      }
+    }
+  }
 }
 
 #[napi]
@@ -494,16 +566,13 @@ pub fn process_content(path: String) -> Result<()> {
             // the objects array is not empty
             if !objects_array.is_empty() {
               // generates the CSS rules from the objects array
-              let generated_classes = generates_css_rules_from_crafting_styles_data(objects_array, is_modular, path.clone());
-
-              // if the generated classes is not empty
-              if !generated_classes.is_empty() {}
+              generates_css_rules_from_crafting_styles_data(objects_array, is_modular, path.clone());
             }
           }
 
           // Use dbg! macro to print and inspect the content
-          //let data = Arc::new(Mutex::new(CORE_AST.lock().unwrap().clone()));
-          //dbg!(&data);
+          let data = Arc::new(Mutex::new(GENERATED_CSS_STYLES.lock().unwrap().clone()));
+          dbg!(&data);
         }
       }
     }
