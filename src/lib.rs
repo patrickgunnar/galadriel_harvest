@@ -36,6 +36,45 @@ lazy_static! {
   static ref GENERATED_CSS_STYLES: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
 }
 
+fn collects_static_core_data(key: String, property: String) -> Option<Vec<(String, String)>> {
+  // loops through the static core content
+  for (container, elements) in STATIC_CORE.iter() {
+    // if the container is equal to the key
+    if container == &key {
+      // loops through the elements inside the container
+      for (element, value) in elements {
+        // if the element is equal to the property
+        if element == &property {
+          let mut result = Vec::new();
+
+          // extracts the value's properties
+          for (css_property, css_value) in value {
+            result.push((css_property.clone(), css_value.clone()));
+          }
+
+          // returns the value's rules
+          return Some(result);
+        }
+      }
+    }
+  }
+
+  None
+}
+
+fn collects_dynamic_core_data(key: String) -> Option<String> {
+  // loops through the dynamic properties
+  for (container, element) in DYNAMIC_CORE.iter() {
+    // if the container is equal to the key
+    if container == &key {
+      // returns the container's value
+      return Some(element.clone());
+    }
+  }
+
+  None
+}
+
 fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> {
   // quotes control
   let mut inside_quotes = false;
@@ -345,8 +384,9 @@ fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<Value>, is_m
           if data.contains("$") {
             // generates the class name
             // collects the value from data and replaces the "$" inside it by an empty string
+            let string_data = serde_json::from_str::<String>(data).unwrap_or_default().replace(" ", "");
             let class_name = format!(
-              "{}{}", serde_json::from_str::<String>(data).unwrap_or_default().replace("$", "").replace(" ", ""),
+              "{}{}", string_data.clone().replace("$", ""),
               if is_modular && !file_path.is_empty() { // if is a modular config and file_path is not empty
                 format!("-{}", generates_hashing_hex(file_path.clone(), false, true)) // hash the file path and return the hashed string
               } else {
@@ -374,7 +414,6 @@ fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<Value>, is_m
             }
 
             // temp code
-            append_style_to_styles_ast(key.to_string(), "AQUI".to_string(), "".to_string());
             //println!("{}", class_name);
           }
         }
@@ -463,8 +502,8 @@ pub fn process_content(path: String) -> Result<()> {
           }
 
           // Use dbg! macro to print and inspect the content
-          let data = Arc::new(Mutex::new(CORE_AST.lock().unwrap().clone()));
-          dbg!(&data);
+          //let data = Arc::new(Mutex::new(CORE_AST.lock().unwrap().clone()));
+          //dbg!(&data);
         }
       }
     }
