@@ -3,8 +3,8 @@ use std::collections::HashMap;
 
 // static CSS properties
 lazy_static! {
-    pub static ref STATIC_CORE: HashMap<String, HashMap<String, Vec<String>>> = {
-        let mut map: HashMap<String, Vec<(String, String)> > = HashMap::new();
+    pub static ref STATIC_CORE: HashMap<String, HashMap<String, Vec<(String, String)> >> = {
+        let mut map = HashMap::new();
 
         // set CSS properties
         let mut display: HashMap<String, Vec<(String, String)> > = HashMap::new();
