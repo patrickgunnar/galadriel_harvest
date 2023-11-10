@@ -1,5 +1,14 @@
 #![deny(clippy::all)]
 
+mod ast {
+  pub mod core_ast;
+}
+
+use ast::core_ast::CORE_AST;
+
+use lazy_static::lazy_static;
+use std::collections::HashMap;
+use std::sync::{Mutex, Arc};
 use napi::Result;
 use serde_json::Value;
 use std::io::Read;
@@ -11,6 +20,11 @@ use sha2::{Digest, Sha256};
 
 #[macro_use]
 extern crate napi_derive;
+
+// lazy static controls
+lazy_static! {
+  static ref GENERATED_CSS_STYLES: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
+}
 
 fn clear_white_spaces_and_break_lines_from_code(code: String) -> Result<String> {
   // quotes control
@@ -271,6 +285,42 @@ fn generates_hashing_hex(str: String, is_96_bits: bool, is_32_bits: bool) -> Str
   }
 }
 
+fn append_style_to_styles_ast(key: String, class_rules: String, media: String) -> () {
+  // lock the core ast to access the styles
+  let mut core_ast_map = CORE_AST.lock().unwrap();
+  // control variable
+  let mut found = false;
+
+  // loops through ast's nodes
+  for (_, node) in core_ast_map.iter_mut() {
+    // loops through node's properties
+    for (property, data) in node.into_iter() {
+      // if media is not empty and media is equal to property
+      // or media is empty and key is equal to property
+      if !media.is_empty() && property == &media || media.is_empty() && property == &key {
+        data.push(class_rules.clone());
+        found = true;
+        break;
+      }
+    }
+  }
+
+  if !found { // if not found an existing property
+    // get the other properties node
+    let other_properties = core_ast_map.entry(
+      "otherProperties".to_string()
+    ).or_insert_with(|| HashMap::new());
+
+    // if media is not empty, return media
+    // else, return the key
+    let entry_name = if !media.is_empty() { media.clone() } else { key.clone() };
+    // gets or creates an instance in other properties
+    let property = other_properties.entry(entry_name).or_insert_with(|| Vec::new());
+
+    property.push(class_rules.clone());
+  }
+}
+
 fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<Value>, is_modular: bool, file_path: String) -> String {
   // loops over all objects
   for object in objects_array {
@@ -286,7 +336,7 @@ fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<Value>, is_m
             // generates the class name
             // collects the value from data and replaces the "$" inside it by an empty string
             let class_name = format!(
-              "{}{}", serde_json::from_str::<String>(data).unwrap_or_default().replace("$", ""),
+              "{}{}", serde_json::from_str::<String>(data).unwrap_or_default().replace("$", "").replace(" ", ""),
               if is_modular && !file_path.is_empty() { // if is a modular config and file_path is not empty
                 format!("-{}", generates_hashing_hex(file_path.clone(), false, true)) // hash the file path and return the hashed string
               } else {
@@ -294,8 +344,28 @@ fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<Value>, is_m
               }
             );
 
+            // lock the mutex to access the hash map
+            let generated_styles_map =  GENERATED_CSS_STYLES.lock().unwrap();
+
             // if the current selector was already used
-            println!("{}", class_name);
+            if generated_styles_map.contains_key(&class_name.clone()) {
+              // if modular config is on
+              if is_modular {
+                // collects the styles
+                match generated_styles_map.get(&class_name.clone()) {
+                  Some(styles) => { // append the styles into the ast
+                    append_style_to_styles_ast(key.to_string(), styles.to_string(), "".to_string());
+                  },
+                  None => {}
+                }
+              }
+
+              continue;
+            }
+
+            // temp code
+            append_style_to_styles_ast(key.to_string(), "AQUI".to_string(), "".to_string());
+            //println!("{}", class_name);
           }
         }
       }
@@ -381,6 +451,10 @@ pub fn process_content(path: String) -> Result<()> {
               if !generated_classes.is_empty() {}
             }
           }
+
+          // Use dbg! macro to print and inspect the content
+          let data = Arc::new(Mutex::new(CORE_AST.lock().unwrap().clone()));
+          dbg!(&data);
         }
       }
     }
