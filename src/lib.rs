@@ -4,7 +4,17 @@ mod ast {
   pub mod core_ast;
 }
 
+mod core {
+  pub mod static_core;
+  pub mod dynamic_core;
+}
+
 use ast::core_ast::CORE_AST;
+
+use core::{
+  static_core::STATIC_CORE,
+  dynamic_core::DYNAMIC_CORE
+};
 
 use lazy_static::lazy_static;
 use std::collections::HashMap;
