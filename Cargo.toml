@@ -14,7 +14,7 @@ serde = "1.0.192"
 serde_json = "1.0.108"
 sha2 = "0.10.8"
 lazy_static = "1.4.0"
-regex = "1.10.2"
+linked-hash-map = "0.5.6"
 
 [build-dependencies]
 napi-build = "2.0.1"
