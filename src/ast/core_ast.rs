@@ -1,13 +1,13 @@
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use linked_hash_map::LinkedHashMap;
 use std::sync::Mutex;
 
 lazy_static! {
-    pub static ref CORE_AST: Mutex<HashMap<String, HashMap<String, Vec<String>>>> = {
-        let mut ast = HashMap::new();
+    pub static ref CORE_AST: Mutex<LinkedHashMap<String, LinkedHashMap<String, Vec<String>>>> = {
+        let mut ast = LinkedHashMap::new();
 
         // box model declarations
-        let mut box_model = HashMap::new();
+        let mut box_model = LinkedHashMap::new();
 
         box_model.insert("width".to_string(), vec![]);
         box_model.insert("height".to_string(), vec![]);
@@ -25,7 +25,7 @@ lazy_static! {
         ast.insert("boxModel".to_string(), box_model);
 
         // layout declarations
-        let mut layout = HashMap::new();
+        let mut layout = LinkedHashMap::new();
 
         layout.insert("display".to_string(), vec![]);
         layout.insert("position".to_string(), vec![]);
@@ -46,7 +46,7 @@ lazy_static! {
         ast.insert("layout".to_string(), layout);
 
         // background declarations
-        let mut background = HashMap::new();
+        let mut background = LinkedHashMap::new();
 
         background.insert("background".to_string(), vec![]);
         background.insert("backgroundColor".to_string(), vec![]);
@@ -63,7 +63,7 @@ lazy_static! {
         ast.insert("background".to_string(), background);
 
         // borders declarations
-        let mut borders = HashMap::new();
+        let mut borders = LinkedHashMap::new();
 
         borders.insert("border".to_string(), vec![]);
         borders.insert("borderBottom".to_string(), vec![]);
@@ -89,7 +89,7 @@ lazy_static! {
         ast.insert("borders".to_string(), borders);
 
         //typography declarations
-        let mut typography = HashMap::new();
+        let mut typography = LinkedHashMap::new();
 
         typography.insert("fontFamily".to_string(), vec![]);
         typography.insert("fontSize".to_string(), vec![]);
@@ -120,7 +120,7 @@ lazy_static! {
         ast.insert("typography".to_string(), typography);
 
         //transform and animation declarations
-        let mut transform_and_animation = HashMap::new();
+        let mut transform_and_animation = LinkedHashMap::new();
 
         transform_and_animation.insert("transform".to_string(), vec![]);
         transform_and_animation.insert("transformOrigin".to_string(), vec![]);
@@ -141,7 +141,7 @@ lazy_static! {
         ast.insert("transformAndAnimation".to_string(), transform_and_animation);
 
         // other properties declarations
-        let mut other_properties = HashMap::new();
+        let mut other_properties = LinkedHashMap::new();
 
         other_properties.insert("aspectRatio".to_string(), vec![]);
         other_properties.insert("accentColor".to_string(), vec![]);
@@ -273,7 +273,7 @@ lazy_static! {
         ast.insert("otherProperties".to_string(), other_properties);
 
         // pseudo selectors declarations
-        let mut pseudo_selectors = HashMap::new();
+        let mut pseudo_selectors = LinkedHashMap::new();
 
         pseudo_selectors.insert("hover".to_string(), vec![]);
         pseudo_selectors.insert("active".to_string(), vec![]);
@@ -312,7 +312,7 @@ lazy_static! {
         ast.insert("pseudoSelectors".to_string(), pseudo_selectors);
 
         // media query variables declarations
-        let mut media_query_variables = HashMap::new();
+        let mut media_query_variables = LinkedHashMap::new();
 
         media_query_variables.insert("minStandardSmartphones".to_string(), vec![]);
         media_query_variables.insert("minLargeSmartphones".to_string(), vec![]);
