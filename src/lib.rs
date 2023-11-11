@@ -18,7 +18,8 @@ use core::{
 
 use lazy_static::lazy_static;
 use std::collections::HashMap;
-use std::sync::{Mutex, Arc};
+use linked_hash_map::LinkedHashMap;
+use std::sync::Mutex;
 use napi::Result;
 use serde_json::Value;
 use std::io::Read;
@@ -358,7 +359,7 @@ fn append_style_to_styles_ast(key: String, class_rules: String, media: String) -
     // get the other properties node
     let other_properties = core_ast_map.entry(
       "otherProperties".to_string()
-    ).or_insert_with(|| HashMap::new());
+    ).or_insert_with(|| LinkedHashMap::new());
 
     // if media is not empty, return media
     // else, return the key
@@ -373,7 +374,7 @@ fn append_style_to_styles_ast(key: String, class_rules: String, media: String) -
   }
 }
 
-fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo: String) -> () {
+fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo: String, css_file_creation: &mut bool) -> () {
   // extracts the key and value
   let parts: Vec<String> = value.split(":").map(|s| s.to_string()).collect();
   // if the pseudo is not empty
@@ -463,6 +464,8 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
           generated_styles_map.insert(class_name.to_string(), class_rules.to_string());
           // insert the utility class into the ast
           append_style_to_styles_ast(key.to_string(), class_rules.to_string(), media.clone());
+          // set the CSS file creation to true
+          *css_file_creation = true;
         }
       } else {
         // lock the craft styles to store data
@@ -490,6 +493,8 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
                   generated_styles_map.insert(config_class_name.to_string(), class_rules.to_string());
                   // insert the utility class into the ast
                   append_style_to_styles_ast(config_key.to_string(), class_rules.to_string(), media.clone());
+                  // set the CSS file creation to true
+                  *css_file_creation = true;
 
                   return;
                 }
@@ -510,18 +515,20 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
         generated_styles_map.insert(class_name.to_string(), class_rules.to_string());
         // insert the utility class into the ast
         append_style_to_styles_ast(key.to_string(), class_rules.to_string(), media.clone());
+        // set the CSS file creation to true
+        *css_file_creation = true;
       }
     }
   }
 }
 
-fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<String>, is_modular: bool, file_path: String) -> () {
+fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<String>, is_modular: bool, file_path: String, mut css_file_creation: &mut bool) -> () {
   // loops over all objects
   for value in objects_array {
     // if the current property is key:value type
     if !value.contains("[") && !value.contains("]") {
       // process the value
-      process_css_rules(value, is_modular, file_path.to_string(), "".to_string());
+      process_css_rules(value, is_modular, file_path.to_string(), "".to_string(), &mut css_file_creation);
     } else if value.contains("[") && value.contains("]") {
       // parse the json into a vector of strings
       let parsed_vec = serde_json::from_str::<Vec<String>>(&value.to_string()).unwrap_or_default();
@@ -536,14 +543,93 @@ fn generates_css_rules_from_crafting_styles_data(objects_array: Vec<String>, is_
         }
 
         // process the value
-        process_css_rules(value.to_string(), is_modular, file_path.to_string(), pseudo_property.clone());
+        process_css_rules(value.to_string(), is_modular, file_path.to_string(), pseudo_property.clone(), &mut css_file_creation);
       }
     }
   }
 }
 
+fn clear_core_ast_data() -> () {
+  // lock the core ast
+  let mut core_ast_map = CORE_AST.lock().unwrap();
+
+  // loops through the nodes inside the core ast
+  for (_, node) in core_ast_map.iter_mut() {
+    // loops through the node's data
+    for (_, data) in node.into_iter() {
+      data.clear();
+    }
+  }
+}
+
+fn collects_core_ast_data() -> String {
+  // lock the core ast to access the data
+  let core_ast_map = CORE_AST.lock().unwrap();
+  // variable to store the collected data
+  let mut collected_data = String::new();
+  // variable to store the media queries values
+  let mut media_queries = String::new();
+
+  // loops through the nodes inside the core ast
+  for (container, node) in core_ast_map.iter() {
+    // loops through the node's data
+    for (property, data) in node.into_iter() {
+      // if the data vec is not empty
+      if !data.is_empty() {
+        // stores the media query value
+        let mut media_value = String::new();
+
+        // loops through the data content
+        for item in data {
+          // the container is a media query
+          if container == "mediaQueryVariables" {
+            // collects the media query value
+            if let Some(collected_property) = collects_dynamic_core_data(property.to_string()) {
+              // if the collected value starts with "#"
+              if collected_property.starts_with("#") {
+                // format the collected property value
+                media_value = collected_property.replace("#", "").to_string();
+                media_queries += &format!("\t{}\n", item).to_string();
+              }
+            }
+          } else { // if the container is regular rules
+            // format the collected property value
+            let formatted_item = format!("{}\n", item).to_string();
+
+            // if the collected data does not contain the current value
+            if !collected_data.contains(&formatted_item) {
+              collected_data += &formatted_item;
+            }
+          }
+        }
+
+        // if the container is a media query and the media query's value is not empty
+        if container == "mediaQueryVariables" && !media_value.is_empty() {
+          // format the media query data
+          let formatted_media = format!("@media screen and  ({}) {{ \n{} }}", media_value, media_queries);
+
+          media_value.clear();
+          media_queries.clear();
+
+          // format the collected property value
+          let formatted_item = &format!("{}\n", formatted_media).to_string();
+
+          // if the collected data does not contain the current value
+          if !collected_data.contains(formatted_item) {
+            collected_data += &formatted_item;
+          }
+        }
+      }
+    }
+  }
+
+  collected_data
+}
+
 #[napi]
 pub fn process_content(path: String) -> Result<()> {
+  // creates CSS file state
+  let mut css_file_creation = false;
   // collects the contents of the galadriel config file
   let galadriel_config_data = collects_galadriel_config();
   // control to check if exists a valid config
@@ -591,6 +677,12 @@ pub fn process_content(path: String) -> Result<()> {
     }
   }
 
+  // if modular flag is enabled
+  // clears the ast content
+  if is_modular {
+    clear_core_ast_data();
+  }
+
   // checks if the file exists and the config is valid
   if Path::new(&path).exists() && config_control {
     // attempt to open the file
@@ -604,7 +696,7 @@ pub fn process_content(path: String) -> Result<()> {
     // if the file content is not empty
     if !file_content.is_empty() {
       // removes all the white spaces outside quotes and break lines
-      let clean_code = clear_white_spaces_and_break_lines_from_code(file_content)?;
+      let clean_code = clear_white_spaces_and_break_lines_from_code(file_content.clone())?;
 
       // if the clean_code is not empty
       if !clean_code.is_empty() {
@@ -620,13 +712,52 @@ pub fn process_content(path: String) -> Result<()> {
             // the objects array is not empty
             if !objects_array.is_empty() {
               // generates the CSS rules from the objects array
-              generates_css_rules_from_crafting_styles_data(objects_array, is_modular, path.clone());
+              generates_css_rules_from_crafting_styles_data(objects_array, is_modular, path.clone(), &mut css_file_creation);
             }
           }
 
-          // Use dbg! macro to print and inspect the content
-          let data = Arc::new(Mutex::new(CORE_AST.lock().unwrap().clone()));
-          dbg!(&data);
+          // if the modular flag is enabled
+          // or the global creation state is true
+          if is_modular || css_file_creation {
+            // collects the generated data from the core ast
+            let collected_css_rules = collects_core_ast_data();
+
+            // if collected CSS rules is not empty
+            if !collected_css_rules.is_empty() {
+              // split the path into path and extension
+              let file_path: Vec<&str> = path.split(".").collect();
+
+              // if path without extension is not empty
+              if !file_path[0].is_empty() {
+                // generates the CSS file path
+                let css_file_path = format!("{}.css", file_path[0]);
+
+                // if formatted CSS file path is not empty
+                if !css_file_path.is_empty() {
+                  // Create the CSS file write the CSS content
+                  if let Err(_) = fs::write(css_file_path.clone(), collected_css_rules) {
+                    println!("CSS file not generated!");
+                  } else {
+                    println!("CSS file generated successfully!");
+                  };
+
+                  // creates new path from the CSS file path
+                  let css_path = Path::new(&css_file_path);
+
+                  // collects CSS file path name
+                  if let Some(file_name) = css_path.file_name() {
+                    // transform the path into a str
+                    if let Some(name_str) = file_name.to_str() {
+                      // if the file content does not contain the import of the CSS file
+                      if !&file_content.contains(name_str) {
+                        println!("{}", name_str);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
