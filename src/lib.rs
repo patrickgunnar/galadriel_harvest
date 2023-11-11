@@ -388,12 +388,14 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
   if let [key, data] = parts.as_slice() {
     // transform the json into a string
     let transformed_json = serde_json::from_str::<String>(data).unwrap_or_default();
+
     // returns the transformed json
     let string_data = if !transformed_json.is_empty() {
       transformed_json
     } else { // replace the single quotes to double quotes and transform the json into a string
       serde_json::from_str::<String>(&data.replace("'", "\"")).unwrap_or_default()
     };
+    
     // if is a modular config and file_path is not empty
     // hash the file path and return the hashed string
     let modular_name = if is_modular && !file_path.is_empty() {
@@ -402,16 +404,28 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
       "".to_string() 
     };
 
+    // checks if the pseudo is a media
+    let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
+
+    // if the current pseudo is a media
+    // hash the media and return the hashed string
+    let media_name = if !media.is_empty() { 
+      format!("-{}", generates_hashing_hex(media.clone(), false, true)) 
+    } else { // return an empty string
+      "".to_string() 
+    };
+
     // formatted string data
     let formatted_data = string_data.clone().replace("$", "").replace(" ", "");
+
     // generates the class name
     let class_name = if string_data.contains("$") {
       // replaces the "$" inside it by an empty string and removes spaces
-      format!("{}{}", formatted_data, modular_name)
+      format!("{}{}{}", formatted_data, media_name, modular_name)
     } else {  // transform the key and the its value into key:value format
-      format!("galadriel_{}{}", 
+      format!("galadriel_{}{}{}", 
         generates_hashing_hex(format!("{}:{}", key.clone().to_string(), string_data.clone()), false, false),
-        modular_name
+        media_name, modular_name
       )
     };
 
@@ -440,18 +454,15 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
         // extracts property:value pairs from the returned data
         for (collected_property, collected_value) in collected_rules.iter() {
           let class_rules = format!( // creates the CSS utility class
-            ".{}{} {{ {}: {} }}", class_name, 
+            ".{}{} {{ {}: {} }}", class_name,
             if !pseudo_property.starts_with("#") { pseudo_property.clone() } else { "".to_string() }, 
             collected_property, collected_value
           );
 
-          // checks if the pseudo is a media
-          let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
-
           // insert the utility class into the tracker
           generated_styles_map.insert(class_name.to_string(), class_rules.to_string());
           // insert the utility class into the ast
-          append_style_to_styles_ast(key.to_string(), class_rules.to_string(), media);
+          append_style_to_styles_ast(key.to_string(), class_rules.to_string(), media.clone());
         }
       } else {
         // lock the craft styles to store data
@@ -470,18 +481,15 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
                 // collects the dynamic property
                 if let Some(collected_property) = collects_dynamic_core_data(config_key.to_string()) {
                   let class_rules = format!( // creates the CSS utility class
-                    ".{}{} {{ {}: {} }}", config_class_name, 
+                    ".{}{} {{ {}: {} }}", config_class_name,
                     if !pseudo_property.starts_with("#") { pseudo_property.clone() } else { "".to_string() }, 
                     collected_property, config_property_value.to_string()
                   );
 
-                  // checks if the pseudo is a media
-                  let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
-
                   // insert the utility class into the tracker
                   generated_styles_map.insert(config_class_name.to_string(), class_rules.to_string());
                   // insert the utility class into the ast
-                  append_style_to_styles_ast(config_key.to_string(), class_rules.to_string(), media);
+                  append_style_to_styles_ast(config_key.to_string(), class_rules.to_string(), media.clone());
 
                   return;
                 }
@@ -493,18 +501,15 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
     } else {
       if let Some(collected_property) = collects_dynamic_core_data(key.to_string()) {
         let class_rules = format!( // creates the CSS utility class
-          ".{}{} {{ {}: {} }}", class_name, 
+          ".{}{} {{ {}: {} }}", class_name,
           if !pseudo_property.starts_with("#") { pseudo_property.clone() } else { "".to_string() }, 
           collected_property, string_data.to_string()
         );
 
-        // checks if the pseudo is a media
-        let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
-
         // insert the utility class into the tracker
         generated_styles_map.insert(class_name.to_string(), class_rules.to_string());
         // insert the utility class into the ast
-        append_style_to_styles_ast(key.to_string(), class_rules.to_string(), media);
+        append_style_to_styles_ast(key.to_string(), class_rules.to_string(), media.clone());
       }
     }
   }
