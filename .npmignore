@@ -13,3 +13,8 @@ __test__
 renovate.json
 ./dataset.js
 ./test.mjs
+dataset.js
+test.mjs
+galadriel.json
+dataset.css
+.vscode
