@@ -340,8 +340,13 @@ fn append_style_to_styles_ast(key: String, class_rules: String, media: String) -
       // if media is not empty and media is equal to property
       // or media is empty and key is equal to property
       if !media.is_empty() && property == &media || media.is_empty() && property == &key {
+        // if node does not contain the current rules
         if !data.contains(&class_rules) {
           data.push(class_rules.clone());
+          found = true;
+          break;
+          // if the current node does contain the current rules
+        } else if data.contains(&class_rules) {
           found = true;
           break;
         }
@@ -397,10 +402,12 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
       "".to_string() 
     };
 
+    // formatted string data
+    let formatted_data = string_data.clone().replace("$", "").replace(" ", "");
     // generates the class name
     let class_name = if string_data.contains("$") {
       // replaces the "$" inside it by an empty string and removes spaces
-      format!("{}{}", string_data.clone().replace("$", "").replace(" ", ""), modular_name)
+      format!("{}{}", formatted_data, modular_name)
     } else {  // transform the key and the its value into key:value format
       format!("galadriel_{}{}", 
         generates_hashing_hex(format!("{}:{}", key.clone().to_string(), string_data.clone()), false, false),
@@ -458,21 +465,26 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
           for (config_key, config_value) in parsed_craft_styles.iter() {
             // loops through values' content
             for (config_class_name, config_property_value) in config_value.iter() {
-              // collects the dynamic property
-              if let Some(collected_property) = collects_dynamic_core_data(config_key.to_string()) {
-                let class_rules = format!( // creates the CSS utility class
-                  ".{}{} {{ {}: {} }}", config_class_name, 
-                  if !pseudo_property.starts_with("#") { pseudo_property.clone() } else { "".to_string() }, 
-                  collected_property, config_property_value.to_string()
-                );
+              // if config class name is the same as the string data
+              if config_class_name == &formatted_data {
+                // collects the dynamic property
+                if let Some(collected_property) = collects_dynamic_core_data(config_key.to_string()) {
+                  let class_rules = format!( // creates the CSS utility class
+                    ".{}{} {{ {}: {} }}", config_class_name, 
+                    if !pseudo_property.starts_with("#") { pseudo_property.clone() } else { "".to_string() }, 
+                    collected_property, config_property_value.to_string()
+                  );
 
-                // checks if the pseudo is a media
-                let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
+                  // checks if the pseudo is a media
+                  let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
 
-                // insert the utility class into the tracker
-                generated_styles_map.insert(config_class_name.to_string(), class_rules.to_string());
-                // insert the utility class into the ast
-                append_style_to_styles_ast(config_key.to_string(), class_rules.to_string(), media);
+                  // insert the utility class into the tracker
+                  generated_styles_map.insert(config_class_name.to_string(), class_rules.to_string());
+                  // insert the utility class into the ast
+                  append_style_to_styles_ast(config_key.to_string(), class_rules.to_string(), media);
+
+                  return;
+                }
               }
             }
           }
