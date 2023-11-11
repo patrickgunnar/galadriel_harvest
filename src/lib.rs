@@ -34,6 +34,7 @@ extern crate napi_derive;
 // lazy static controls
 lazy_static! {
   static ref GENERATED_CSS_STYLES: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
+  static ref CRAFT_STYLES_JSON: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
 }
 
 fn collects_static_core_data(key: String, property: String) -> Option<Vec<(String, String)>> {
@@ -360,7 +361,10 @@ fn append_style_to_styles_ast(key: String, class_rules: String, media: String) -
     // gets or creates an instance in other properties
     let property = other_properties.entry(entry_name).or_insert_with(|| Vec::new());
 
-    property.push(class_rules.clone());
+    // if current CSS class does not exist in property
+    if !property.contains(&class_rules.clone()) {
+      property.push(class_rules.clone());
+    }
   }
 }
 
@@ -435,9 +439,7 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
           );
 
           // checks if the pseudo is a media
-          let media = if pseudo_property.starts_with("#") {
-            pseudo_property.replace("#", "")
-          } else { "".to_string() };
+          let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
 
           // insert the utility class into the tracker
           generated_styles_map.insert(class_name.to_string(), class_rules.to_string());
@@ -445,7 +447,36 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
           append_style_to_styles_ast(key.to_string(), class_rules.to_string(), media);
         }
       } else {
-        println!("Config: {}", string_data.clone());
+        // lock the craft styles to store data
+        let craft_styles_map = CRAFT_STYLES_JSON.lock().unwrap();
+
+        if let Some(content) = craft_styles_map.get("craftStyles") {
+          // parsed json content
+          let parsed_craft_styles = serde_json::from_str::<HashMap<String, HashMap<String, String>>>(&content).unwrap_or_default();
+
+          // loops through the craft styles content
+          for (config_key, config_value) in parsed_craft_styles.iter() {
+            // loops through values' content
+            for (config_class_name, config_property_value) in config_value.iter() {
+              // collects the dynamic property
+              if let Some(collected_property) = collects_dynamic_core_data(config_key.to_string()) {
+                let class_rules = format!( // creates the CSS utility class
+                  ".{}{} {{ {}: {} }}", config_class_name, 
+                  if !pseudo_property.starts_with("#") { pseudo_property.clone() } else { "".to_string() }, 
+                  collected_property, config_property_value.to_string()
+                );
+
+                // checks if the pseudo is a media
+                let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
+
+                // insert the utility class into the tracker
+                generated_styles_map.insert(config_class_name.to_string(), class_rules.to_string());
+                // insert the utility class into the ast
+                append_style_to_styles_ast(config_key.to_string(), class_rules.to_string(), media);
+              }
+            }
+          }
+        }
       }
     } else {
       if let Some(collected_property) = collects_dynamic_core_data(key.to_string()) {
@@ -456,9 +487,7 @@ fn process_css_rules(value: String, is_modular: bool, file_path: String, pseudo:
         );
 
         // checks if the pseudo is a media
-        let media = if pseudo_property.starts_with("#") {
-          pseudo_property.replace("#", "")
-        } else { "".to_string() };
+        let media = if pseudo_property.starts_with("#") { pseudo.to_string() } else { "".to_string() };
 
         // insert the utility class into the tracker
         generated_styles_map.insert(class_name.to_string(), class_rules.to_string());
@@ -535,6 +564,14 @@ pub fn process_content(path: String) -> Result<()> {
         }
       }
     }
+
+    // get the craft styles content
+    if let Some(craft_styles) = config.get("craftStyles") {
+      // lock the craft styles to store data
+      let mut craft_styles_map = CRAFT_STYLES_JSON.lock().unwrap();
+
+      craft_styles_map.insert("craftStyles".to_string(), craft_styles.to_string());
+    }
   }
 
   // checks if the file exists and the config is valid
@@ -571,7 +608,7 @@ pub fn process_content(path: String) -> Result<()> {
           }
 
           // Use dbg! macro to print and inspect the content
-          let data = Arc::new(Mutex::new(GENERATED_CSS_STYLES.lock().unwrap().clone()));
+          let data = Arc::new(Mutex::new(CORE_AST.lock().unwrap().clone()));
           dbg!(&data);
         }
       }
